@@ -4,6 +4,15 @@ void main() {
   runApp(const FoodDeliveryApp());
 }
 
+// --- CONSTANTS (GRADIENT COLORS) ---
+const Color kColorOrange = Color(0xFFFF512F);
+const Color kColorPink = Color(0xFFDD2476);
+const LinearGradient kPrimaryGradient = LinearGradient(
+  colors: [kColorOrange, kColorPink],
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+);
+
 // ---------------- MODELS ----------------
 class Restaurant {
   final int id;
@@ -39,6 +48,16 @@ class CartItem {
   CartItem({required this.item, required this.quantity, required this.restaurant});
 }
 
+class OrderModel {
+  final String orderId;
+  final String restaurantName;
+  final double totalAmount;
+  final String status;
+  final int itemCount;
+
+  OrderModel({required this.orderId, required this.restaurantName, required this.totalAmount, required this.status, required this.itemCount, required DateTime time});
+}
+
 // ---------------- APP WIDGET ----------------
 class FoodDeliveryApp extends StatelessWidget {
   const FoodDeliveryApp({super.key});
@@ -49,7 +68,8 @@ class FoodDeliveryApp extends StatelessWidget {
       title: 'Food Delivery Pro',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primarySwatch: Colors.deepOrange,
+        // Primary Swatch ko hatakar custom colors use karenge
+        primaryColor: kColorOrange,
         scaffoldBackgroundColor: const Color(0xFFF5F5F5),
         fontFamily: 'Roboto',
         appBarTheme: const AppBarTheme(
@@ -63,7 +83,37 @@ class FoodDeliveryApp extends StatelessWidget {
   }
 }
 
-// ---------------- IMAGE HELPER (Fixes Broken Images) ----------------
+// ---------------- CUSTOM GRADIENT BUTTON (New Addition) ----------------
+class GradientButton extends StatelessWidget {
+  final String text;
+  final VoidCallback onPressed;
+  
+  const GradientButton({super.key, required this.text, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      height: 50,
+      decoration: BoxDecoration(
+        gradient: kPrimaryGradient, // Buttons par Gradient apply kiya
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [BoxShadow(color: kColorPink.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))],
+      ),
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        child: Text(text, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+      ),
+    );
+  }
+}
+
+// ---------------- IMAGE HELPER ----------------
 class NetworkImageFixed extends StatelessWidget {
   final String imageUrl;
   final double? width;
@@ -75,10 +125,7 @@ class NetworkImageFixed extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Image.network(
-      imageUrl,
-      width: width,
-      height: height,
-      fit: fit,
+      imageUrl, width: width, height: height, fit: fit,
       errorBuilder: (context, error, stackTrace) {
         return Container(
           width: width, height: height, color: Colors.grey[300],
@@ -89,7 +136,7 @@ class NetworkImageFixed extends StatelessWidget {
         if (loadingProgress == null) return child;
         return Container(
           width: width, height: height, color: Colors.grey[200],
-          child: Center(child: CircularProgressIndicator(value: loadingProgress.expectedTotalBytes != null ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes! : null)),
+          child: Center(child: CircularProgressIndicator(value: loadingProgress.expectedTotalBytes != null ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes! : null, color: kColorPink)),
         );
       },
     );
@@ -107,6 +154,8 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
   List<CartItem> cart = [];
+  Set<int> favoriteIds = {};
+  List<OrderModel> myOrders = [];
   String _selectedCategory = 'All';
   String _searchQuery = '';
 
@@ -115,10 +164,9 @@ class _MainScreenState extends State<MainScreen> {
   final String userPhone = "03173712789";
   final String userAddress = "House 123, DHA Phase 6, Karachi";
 
-  // ---------------- RESTAURANT DATA ----------------
+  // ---------------- FULL RESTAURANT DATA ----------------
   final List<Restaurant> allRestaurants = [
-    
-    // ================== BURGERS ==================
+    // === BURGERS ===
     Restaurant(
       id: 1, name: 'Burger Lab', category: 'Burger', 
       image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500', 
@@ -130,8 +178,17 @@ class _MainScreenState extends State<MainScreen> {
       ]
     ),
     Restaurant(
+      id: 2, name: 'Ranchers', category: 'Burger', 
+      image: 'https://images.unsplash.com/photo-1550547660-d9450f859349?w=500', 
+      rating: 4.3, deliveryTime: '30-40', deliveryFee: 50,
+      items: [
+        MenuItem(name: 'Cowboy Burger', price: 699, desc: 'BBQ sauce special', image: 'https://images.unsplash.com/photo-1550547660-d9450f859349?w=200'),
+        MenuItem(name: 'Mighty Rancher', price: 899, desc: 'Double fillet crunch', image: 'https://images.unsplash.com/photo-1596626726549-b1f2e99a3f3e?w=200'),
+        MenuItem(name: 'Big Ben', price: 750, desc: 'Crispy thigh fillet', image: 'https://images.unsplash.com/photo-1610440042657-612c34d95e9f?w=200'),
+      ]
+    ),
+    Restaurant(
       id: 3, name: 'KFC', category: 'Burger', 
-      // FIXED IMAGE URL FOR KFC
       image: 'https://images.unsplash.com/photo-1626645738196-c2a7c87a8f58?w=500', 
       rating: 4.7, deliveryTime: '25-35', deliveryFee: 100, discount: 'Free Delivery',
       items: [
@@ -145,22 +202,21 @@ class _MainScreenState extends State<MainScreen> {
       image: 'https://images.unsplash.com/photo-1551782450-a2132b4ba21d?w=500', 
       rating: 4.6, deliveryTime: '20-30', deliveryFee: 120,
       items: [
-        MenuItem(name: 'Big Mac', price: 750, desc: 'Two beef patties special sauce', image: 'https://images.unsplash.com/photo-1551782450-a2132b4ba21d?w=200'),
+        MenuItem(name: 'Big Mac', price: 750, desc: 'Two beef patties', image: 'https://images.unsplash.com/photo-1551782450-a2132b4ba21d?w=200'),
         MenuItem(name: 'McChicken', price: 450, desc: 'Classic chicken burger', image: 'https://images.unsplash.com/photo-1572802419224-296b0aeee0d9?w=200'),
+        MenuItem(name: 'McFlurry', price: 350, desc: 'Oreo ice cream', image: 'https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=200'),
       ]
     ),
 
-    // ================== DESI (NEW CATEGORY) ==================
+    // === DESI ===
     Restaurant(
       id: 17, name: 'Kolachi', category: 'Desi', 
       image: 'https://images.unsplash.com/photo-1599487488170-d11ec9c172f0?w=500', 
       rating: 4.9, deliveryTime: '45-60', deliveryFee: 150, discount: 'Premium',
       items: [
-        MenuItem(name: 'Mutton Karahi', price: 2200, desc: 'Half kg special karahi', image: 'https://images.unsplash.com/photo-1603894584373-5ac82b2ae398?w=200'),
-        MenuItem(name: 'Chicken Handi', price: 1800, desc: 'Boneless creamy handi', image: 'https://images.unsplash.com/photo-1565557623262-b51c2513a641?w=200'),
+        MenuItem(name: 'Mutton Karahi', price: 2200, desc: 'Half kg special', image: 'https://images.unsplash.com/photo-1603894584373-5ac82b2ae398?w=200'),
         MenuItem(name: 'Malai Boti', price: 950, desc: 'Melt in mouth skewers', image: 'https://images.unsplash.com/photo-1599487488170-d11ec9c172f0?w=200'),
         MenuItem(name: 'Garlic Naan', price: 120, desc: 'Butter garlic naan', image: 'https://images.unsplash.com/photo-1626074353765-517a681e40be?w=200'),
-        MenuItem(name: 'Gulab Jamun', price: 300, desc: 'Hot sweet balls', image: 'https://images.unsplash.com/photo-1589119908995-c6837fa14848?w=200'),
       ]
     ),
     Restaurant(
@@ -170,7 +226,6 @@ class _MainScreenState extends State<MainScreen> {
       items: [
         MenuItem(name: 'Chicken Biryani', price: 450, desc: 'Spicy Sindhi biryani', image: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=200'),
         MenuItem(name: 'Seekh Kabab', price: 600, desc: 'Beef kabab 4 pcs', image: 'https://images.unsplash.com/photo-1599487488170-d11ec9c172f0?w=200'),
-        MenuItem(name: 'Paratha Roll', price: 350, desc: 'Chicken chutney roll', image: 'https://images.unsplash.com/photo-1626074353765-517a681e40be?w=200'),
         MenuItem(name: 'Zinger Roll', price: 400, desc: 'Crispy chicken roll', image: 'https://images.unsplash.com/photo-1513639776629-7b611594e29b?w=200'),
       ]
     ),
@@ -191,11 +246,92 @@ class _MainScreenState extends State<MainScreen> {
       items: [
         MenuItem(name: 'Mutton Ribs', price: 2500, desc: 'Grilled chops', image: 'https://images.unsplash.com/photo-1544025162-d76694265947?w=200'),
         MenuItem(name: 'Reshmi Kabab', price: 900, desc: 'Creamy chicken kabab', image: 'https://images.unsplash.com/photo-1599487488170-d11ec9c172f0?w=200'),
-        MenuItem(name: 'Puri Paratha', price: 150, desc: 'Deep fried bread', image: 'https://images.unsplash.com/photo-1626074353765-517a681e40be?w=200'),
       ]
     ),
 
-    // ================== SWEETS ==================
+    // === PIZZA ===
+    Restaurant(
+      id: 9, name: 'Cheezious', category: 'Pizza', 
+      image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500', 
+      rating: 4.9, deliveryTime: '45-55', deliveryFee: 99, discount: 'Flash Deal',
+      items: [
+        MenuItem(name: 'Crown Crust', price: 1600, desc: 'Kabab stuffed edges', image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=200'),
+        MenuItem(name: 'Chicken Tikka', price: 1300, desc: 'Desi flavor', image: 'https://images.unsplash.com/photo-1571407970349-bc16b4774309?w=200'),
+        MenuItem(name: 'Pepperoni', price: 1400, desc: 'Beef pepperoni slices', image: 'https://images.unsplash.com/photo-1628840042765-356cda07504e?w=200'),
+      ]
+    ),
+    Restaurant(
+      id: 10, name: 'Broadway Pizza', category: 'Pizza', 
+      image: 'https://images.unsplash.com/photo-1590947132387-155cc02f3212?w=500', 
+      rating: 4.4, deliveryTime: '40-50', deliveryFee: 70,
+      items: [
+        MenuItem(name: 'Wicked Blend', price: 1500, desc: 'Spicy ranch sauce', image: 'https://images.unsplash.com/photo-1590947132387-155cc02f3212?w=200'),
+        MenuItem(name: 'Dancing Fajita', price: 1400, desc: 'Smoky chicken', image: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=200'),
+        MenuItem(name: 'West Side', price: 1450, desc: 'Garlic mayo base', image: 'https://images.unsplash.com/photo-1618213837799-24d556834357?w=200'),
+      ]
+    ),
+    Restaurant(
+      id: 11, name: 'Pizza Hut', category: 'Pizza', 
+      image: 'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=500', 
+      rating: 4.2, deliveryTime: '30-40', deliveryFee: 80,
+      items: [
+        MenuItem(name: 'Super Supreme', price: 1700, desc: 'Loaded with veggies', image: 'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=200'),
+        MenuItem(name: 'Fajita Sicilian', price: 1500, desc: 'Spicy jalapenos', image: 'https://images.unsplash.com/photo-1595854341625-f33ee10d8e7b?w=200'),
+        MenuItem(name: 'Cheese Lover', price: 1200, desc: 'Extra mozzarella', image: 'https://images.unsplash.com/photo-1589187151053-5ec8818e661b?w=200'),
+      ]
+    ),
+    Restaurant(
+      id: 12, name: 'California Pizza', category: 'Pizza', 
+      image: 'https://images.unsplash.com/photo-1604382354936-07c5d9983bd3?w=500', 
+      rating: 4.6, deliveryTime: '45-55', deliveryFee: 100,
+      items: [
+        MenuItem(name: 'Creamy Tikka', price: 1600, desc: 'White sauce special', image: 'https://images.unsplash.com/photo-1604382354936-07c5d9983bd3?w=200'),
+        MenuItem(name: 'Ranch Pizza', price: 1700, desc: 'Ranch dressing', image: 'https://images.unsplash.com/photo-1534308983496-4fabb1a015ee?w=200'),
+        MenuItem(name: 'Sriracha', price: 1650, desc: 'Hot sriracha sauce', image: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=200'),
+      ]
+    ),
+
+    // === ASIAN ===
+    Restaurant(
+      id: 13, name: 'Chop Chop Wok', category: 'Asian', 
+      image: 'https://images.unsplash.com/photo-1512058564366-18510be2db19?w=500', 
+      rating: 4.8, deliveryTime: '35-45', deliveryFee: 120,
+      items: [
+        MenuItem(name: 'Chowmein', price: 850, desc: 'Stir fried noodles', image: 'https://images.unsplash.com/photo-1552611052-33e04de081de?w=200'),
+        MenuItem(name: 'Kung Pao', price: 950, desc: 'Peanuts and chili', image: 'https://images.unsplash.com/photo-1525755662778-989d0524087e?w=200'),
+        MenuItem(name: 'Dynamite Prawns', price: 1200, desc: 'Crispy prawns', image: 'https://images.unsplash.com/photo-1626645738196-c2a7c87a8f58?w=200'),
+      ]
+    ),
+    Restaurant(
+      id: 14, name: 'Ginsoy', category: 'Asian', 
+      image: 'https://images.unsplash.com/photo-1563245372-f21724e3856d?w=500', 
+      rating: 4.7, deliveryTime: '40-50', deliveryFee: 150,
+      items: [
+        MenuItem(name: 'Cherry Chilli', price: 1300, desc: 'Sweet and spicy', image: 'https://images.unsplash.com/photo-1563245372-f21724e3856d?w=200'),
+        MenuItem(name: 'Egg Fried Rice', price: 600, desc: 'Classic rice', image: 'https://images.unsplash.com/photo-1512058564366-18510be2db19?w=200'),
+      ]
+    ),
+    Restaurant(
+      id: 15, name: 'Bamboo Union', category: 'Asian', 
+      image: 'https://images.unsplash.com/photo-1552611052-33e04de081de?w=500', 
+      rating: 4.6, deliveryTime: '45-55', deliveryFee: 100,
+      items: [
+        MenuItem(name: 'Pad Thai', price: 950, desc: 'Thai flat noodles', image: 'https://images.unsplash.com/photo-1552611052-33e04de081de?w=200'),
+        MenuItem(name: 'Beef Chilli Dry', price: 1200, desc: 'Spicy beef strips', image: 'https://images.unsplash.com/photo-1585032226651-759b368d7246?w=200'),
+      ]
+    ),
+    Restaurant(
+      id: 16, name: 'Cocochan', category: 'Asian', 
+      image: 'https://images.unsplash.com/photo-1560717845-968823efbee1?w=500', 
+      rating: 4.9, deliveryTime: '50-60', deliveryFee: 200, discount: 'Fancy Dining',
+      items: [
+        MenuItem(name: 'Wasabi Prawns', price: 1800, desc: 'Creamy wasabi sauce', image: 'https://images.unsplash.com/photo-1535591273668-578e31182c4f?w=200'),
+        MenuItem(name: 'Mandarin Chicken', price: 1400, desc: 'Orange glaze', image: 'https://images.unsplash.com/photo-1525755662778-989d0524087e?w=200'),
+        MenuItem(name: 'Thai Curry', price: 1500, desc: 'Green curry coconut', image: 'https://images.unsplash.com/photo-1560717845-968823efbee1?w=200'),
+      ]
+    ),
+
+    // === SWEETS ===
     Restaurant(
       id: 5, name: 'Kaybees', category: 'Sweet', 
       image: 'https://images.unsplash.com/photo-1576618148400-f54bed99fcfd?w=500', 
@@ -203,6 +339,7 @@ class _MainScreenState extends State<MainScreen> {
       items: [
         MenuItem(name: 'Special Falooda', price: 450, desc: 'Rich kulfi falooda', image: 'https://images.unsplash.com/photo-1572357176061-70e8106852d8?w=200'),
         MenuItem(name: 'Vanilla Cone', price: 150, desc: 'Soft serve vanilla', image: 'https://images.unsplash.com/photo-1560008581-09826d1de69e?w=200'),
+        MenuItem(name: 'Pineapple Split', price: 550, desc: '3 scoops with pineapple', image: 'https://images.unsplash.com/photo-1505394033641-40c6ad1178d7?w=200'),
       ]
     ),
     Restaurant(
@@ -214,36 +351,23 @@ class _MainScreenState extends State<MainScreen> {
         MenuItem(name: 'Oreo Blast', price: 350, desc: 'Crushed oreo mix', image: 'https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=200'),
       ]
     ),
-
-    // ================== PIZZA ==================
     Restaurant(
-      id: 9, name: 'Cheezious', category: 'Pizza', 
-      image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500', 
-      rating: 4.9, deliveryTime: '45-55', deliveryFee: 99, discount: 'Flash Deal',
+      id: 7, name: 'Flavorado', category: 'Sweet', 
+      image: 'https://images.unsplash.com/photo-1551024601-bec78aea704b?w=500', 
+      rating: 4.7, deliveryTime: '30-45', deliveryFee: 80, discount: '10% OFF',
       items: [
-        MenuItem(name: 'Crown Crust', price: 1600, desc: 'Kabab stuffed edges', image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=200'),
-        MenuItem(name: 'Chicken Tikka', price: 1300, desc: 'Desi flavor', image: 'https://images.unsplash.com/photo-1571407970349-bc16b4774309?w=200'),
-      ]
-    ),
-
-    // ================== ASIAN ==================
-    Restaurant(
-      id: 13, name: 'Chop Chop Wok', category: 'Asian', 
-      image: 'https://images.unsplash.com/photo-1512058564366-18510be2db19?w=500', 
-      rating: 4.8, deliveryTime: '35-45', deliveryFee: 120,
-      items: [
-        MenuItem(name: 'Chowmein', price: 850, desc: 'Stir fried noodles', image: 'https://images.unsplash.com/photo-1552611052-33e04de081de?w=200'),
-        MenuItem(name: 'Kung Pao', price: 950, desc: 'Peanuts and chili', image: 'https://images.unsplash.com/photo-1525755662778-989d0524087e?w=200'),
+        MenuItem(name: 'Italian Gelato', price: 400, desc: 'Premium fruit scoop', image: 'https://images.unsplash.com/photo-1580915411954-282cb1b0d780?w=200'),
+        MenuItem(name: 'Belgian Waffle', price: 650, desc: 'With nutella topping', image: 'https://images.unsplash.com/photo-1562376552-0d160a2f238d?w=200'),
+        MenuItem(name: 'Mango Shake', price: 300, desc: 'Fresh mango pulp', image: 'https://images.unsplash.com/photo-1546173159-315724a31696?w=200'),
       ]
     ),
     Restaurant(
-      id: 15, name: 'Bamboo Union', category: 'Asian', 
-      // FIXED IMAGE URL FOR BAMBOO UNION
-      image: 'https://images.unsplash.com/photo-1552611052-33e04de081de?w=500', 
-      rating: 4.6, deliveryTime: '45-55', deliveryFee: 100,
+      id: 8, name: 'Baskin Robbins', category: 'Sweet', 
+      image: 'https://images.unsplash.com/photo-1560008581-09826d1de69e?w=500', 
+      rating: 4.9, deliveryTime: '25-35', deliveryFee: 100,
       items: [
-        MenuItem(name: 'Pad Thai', price: 950, desc: 'Thai flat noodles', image: 'https://images.unsplash.com/photo-1552611052-33e04de081de?w=200'),
-        MenuItem(name: 'Beef Chilli Dry', price: 1200, desc: 'Spicy beef strips', image: 'https://images.unsplash.com/photo-1585032226651-759b368d7246?w=200'),
+        MenuItem(name: 'Praline Cream', price: 450, desc: 'Single scoop premium', image: 'https://images.unsplash.com/photo-1560008581-09826d1de69e?w=200'),
+        MenuItem(name: 'Chocolate Mousse', price: 450, desc: 'Rich chocolate', image: 'https://images.unsplash.com/photo-1579954115567-dff2eeb6fdeb?w=200'),
       ]
     ),
   ];
@@ -251,10 +375,55 @@ class _MainScreenState extends State<MainScreen> {
   // Logic
   void addToCart(MenuItem item, Restaurant restaurant) {
     setState(() {
-      if (cart.isNotEmpty && cart.first.restaurant.id != restaurant.id) cart.clear();
+      if (cart.isNotEmpty && cart.first.restaurant.id != restaurant.id) {
+        cart.clear();
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("New restaurant selected. Cart cleared.")));
+      }
       final index = cart.indexWhere((c) => c.item.name == item.name);
-      if (index != -1) cart[index].quantity++;
-      else cart.add(CartItem(item: item, quantity: 1, restaurant: restaurant));
+      if (index != -1) {
+        cart[index].quantity++;
+      } else {
+        cart.add(CartItem(item: item, quantity: 1, restaurant: restaurant));
+      }
+    });
+  }
+
+  void removeFromCart(CartItem item) {
+    setState(() {
+      if (item.quantity > 1) {
+        item.quantity--;
+      } else {
+        cart.remove(item);
+      }
+    });
+  }
+
+  void toggleFavorite(int id) {
+    setState(() {
+      if (favoriteIds.contains(id)) {
+        favoriteIds.remove(id);
+      } else {
+        favoriteIds.add(id);
+      }
+    });
+  }
+
+  void placeOrder() {
+    if (cart.isEmpty) return;
+    
+    final newOrder = OrderModel(
+      orderId: "#${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}",
+      restaurantName: cart.first.restaurant.name,
+      totalAmount: getCartTotal(),
+      time: DateTime.now(),
+      status: "Preparing",
+      itemCount: cart.fold(0, (sum, item) => sum + item.quantity),
+    );
+
+    setState(() {
+      myOrders.insert(0, newOrder); 
+      cart.clear();
+      _selectedIndex = 1; 
     });
   }
 
@@ -267,9 +436,9 @@ class _MainScreenState extends State<MainScreen> {
         child: IndexedStack(
           index: _selectedIndex,
           children: [
-            _buildHomeContent(),
-            const Center(child: Text("Orders History (Empty)")),
-            const Center(child: Text("No Favorites Yet")),
+            _buildHomeTab(),
+            _buildOrdersTab(),
+            _buildFavoritesTab(),
             ProfileTab(name: userName, phone: userPhone, address: userAddress),
           ],
         ),
@@ -278,7 +447,7 @@ class _MainScreenState extends State<MainScreen> {
         currentIndex: _selectedIndex,
         onTap: (index) => setState(() => _selectedIndex = index),
         type: BottomNavigationBarType.fixed,
-        selectedItemColor: Colors.deepOrange,
+        selectedItemColor: kColorPink, // Pink for selected tab
         unselectedItemColor: Colors.grey,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
@@ -288,19 +457,27 @@ class _MainScreenState extends State<MainScreen> {
         ],
       ),
       floatingActionButton: (cart.isNotEmpty && _selectedIndex == 0)
-          ? FloatingActionButton.extended(
-              onPressed: () => _showCartSheet(context),
-              backgroundColor: Colors.deepOrange,
-              icon: const Icon(Icons.shopping_bag_outlined),
-              label: Text('${cart.length} items | Rs ${getCartTotal().toInt()}'),
+          ? Container(
+              decoration: BoxDecoration(
+                gradient: kPrimaryGradient,
+                borderRadius: BorderRadius.circular(30),
+                boxShadow: [BoxShadow(color: kColorPink.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))],
+              ),
+              child: FloatingActionButton.extended(
+                onPressed: () => _showCartSheet(context),
+                backgroundColor: Colors.transparent,
+                elevation: 0,
+                icon: const Icon(Icons.shopping_bag_outlined),
+                label: Text('${cart.length} items | Rs ${getCartTotal().toInt()}'),
+              ),
             )
           : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 
-  // --- HOME CONTENT ---
-  Widget _buildHomeContent() {
+  // --- HOME TAB ---
+  Widget _buildHomeTab() {
     final displayRestaurants = allRestaurants.where((r) {
       final matchesSearch = r.name.toLowerCase().contains(_searchQuery.toLowerCase());
       final matchesCategory = _selectedCategory == 'All' || r.category == _selectedCategory;
@@ -309,47 +486,53 @@ class _MainScreenState extends State<MainScreen> {
 
     return Column(
       children: [
-        // Header
+        // GRADIENT HEADER
         Container(
-          padding: const EdgeInsets.all(16),
-          child: Row(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+          decoration: const BoxDecoration(
+            gradient: kPrimaryGradient,
+            borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
+          ),
+          child: Column(
             children: [
-              const Icon(Icons.location_on, color: Colors.deepOrange, size: 28),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              Row(
                 children: [
-                  Text('Delivering to', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-                  const Text('Home • Karachi', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const Icon(Icons.location_on, color: Colors.white, size: 24),
+                  const SizedBox(width: 8),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Delivering to', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      const Text('Home • Karachi', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                    ],
+                  ),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: () => setState(() => _selectedIndex = 3),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+                      child: const Icon(Icons.person, color: Colors.white, size: 24),
+                    ),
+                  ),
                 ],
               ),
-              const Spacer(),
-              GestureDetector(
-                onTap: () => setState(() => _selectedIndex = 3),
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.deepOrange.withOpacity(0.1), shape: BoxShape.circle),
-                  child: const Icon(Icons.person, color: Colors.deepOrange, size: 24),
+              const SizedBox(height: 16),
+              TextField(
+                onChanged: (val) => setState(() => _searchQuery = val),
+                decoration: InputDecoration(
+                  hintText: 'Search food or restaurants...',
+                  prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                  filled: true, fillColor: Colors.white,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
                 ),
               ),
             ],
           ),
         ),
 
-        // Search Bar
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: TextField(
-            onChanged: (val) => setState(() => _searchQuery = val),
-            decoration: InputDecoration(
-              hintText: 'Search food...',
-              prefixIcon: const Icon(Icons.search, color: Colors.grey),
-              filled: true, fillColor: Colors.white,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-              contentPadding: EdgeInsets.zero,
-            ),
-          ),
-        ),
+        const SizedBox(height: 10),
 
         // Categories
         Container(
@@ -362,24 +545,114 @@ class _MainScreenState extends State<MainScreen> {
               _buildCatItem('All', '🍽️', Colors.blue),
               _buildCatItem('Burger', '🍔', Colors.orange),
               _buildCatItem('Pizza', '🍕', Colors.red),
-              _buildCatItem('Desi', '🥘', Colors.brown), // NEW DESI CATEGORY
+              _buildCatItem('Desi', '🥘', Colors.brown),
               _buildCatItem('Asian', '🍜', Colors.teal),
               _buildCatItem('Sweet', '🍩', Colors.pink),
             ],
           ),
         ),
 
-        // Restaurant List
+        // List
         Expanded(
-          child: displayRestaurants.isEmpty
-              ? const Center(child: Text("No restaurants found"))
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: displayRestaurants.length,
-                  itemBuilder: (context, index) => _buildRestaurantCard(displayRestaurants[index]),
-                ),
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: displayRestaurants.length,
+            itemBuilder: (context, index) => _buildRestaurantCard(displayRestaurants[index]),
+          ),
         ),
       ],
+    );
+  }
+
+  Widget _buildRestaurantCard(Restaurant r) {
+    bool isFav = favoriteIds.contains(r.id);
+    return GestureDetector(
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => RestaurantDetailScreen(
+        restaurant: r, 
+        onAddToCart: addToCart, 
+        isFav: isFav, 
+        onToggleFav: toggleFavorite
+      ))),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 20),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 5)]),
+        child: Column(
+          children: [
+            Stack(
+              children: [
+                ClipRRect(borderRadius: const BorderRadius.vertical(top: Radius.circular(15)), child: NetworkImageFixed(r.image, height: 160, width: double.infinity)),
+                if (r.discount != null)
+                  Positioned(top: 10, left: 10, child: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: kColorOrange, borderRadius: BorderRadius.circular(4)), child: Text(r.discount!, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)))),
+                Positioned(
+                  top: 10, right: 10,
+                  child: GestureDetector(
+                    onTap: () => toggleFavorite(r.id),
+                    child: CircleAvatar(
+                      backgroundColor: Colors.white,
+                      radius: 16,
+                      child: Icon(isFav ? Icons.favorite : Icons.favorite_border, color: isFav ? kColorPink : Colors.grey, size: 20),
+                    ),
+                  ),
+                )
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(r.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  Text(r.category, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                  const Divider(),
+                  Row(children: [const Icon(Icons.star, size: 16, color: Colors.amber), Text(' ${r.rating} • ${r.deliveryTime} min • Rs ${r.deliveryFee} fee', style: const TextStyle(color: Colors.grey, fontSize: 12))]),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOrdersTab() {
+    if (myOrders.isEmpty) {
+      return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(Icons.receipt_long, size: 80, color: Colors.grey[300]),
+        const SizedBox(height: 10),
+        const Text("No active orders", style: TextStyle(color: Colors.grey, fontSize: 16))
+      ]));
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: myOrders.length,
+      itemBuilder: (context, index) {
+        final order = myOrders[index];
+        return Card(
+          elevation: 2, margin: const EdgeInsets.only(bottom: 12),
+          child: ListTile(
+            leading: CircleAvatar(backgroundColor: kColorPink.withOpacity(0.1), child: const Icon(Icons.fastfood, color: kColorPink)),
+            title: Text(order.restaurantName, style: const TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: Text("${order.itemCount} Items • Rs ${order.totalAmount.toInt()}"),
+            trailing: Chip(label: Text(order.status), backgroundColor: Colors.green[100], labelStyle: TextStyle(color: Colors.green[800])),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildFavoritesTab() {
+    final favList = allRestaurants.where((r) => favoriteIds.contains(r.id)).toList();
+    if (favList.isEmpty) {
+      return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(Icons.favorite_border, size: 80, color: Colors.grey[300]),
+        const SizedBox(height: 10),
+        const Text("No favorites yet", style: TextStyle(color: Colors.grey, fontSize: 16))
+      ]));
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: favList.length,
+      itemBuilder: (context, index) => _buildRestaurantCard(favList[index]),
     );
   }
 
@@ -409,78 +682,55 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  Widget _buildRestaurantCard(Restaurant r) {
-    return GestureDetector(
-      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => RestaurantDetailScreen(restaurant: r, onAddToCart: addToCart))),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 20),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 5)]),
-        child: Column(
-          children: [
-            Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
-                  child: NetworkImageFixed(r.image, height: 160, width: double.infinity),
-                ),
-                if (r.discount != null)
-                  Positioned(top: 10, left: 10, child: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(4)), child: Text(r.discount!, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)))),
-              ],
-            ),
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(r.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), Row(children: [const Icon(Icons.star, size: 16, color: Colors.amber), Text(' ${r.rating}')])]),
-                  Text(r.category, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                  const Divider(),
-                  Row(children: [const Icon(Icons.delivery_dining, size: 16, color: Colors.grey), Text(' Rs ${r.deliveryFee} Fee • ${r.deliveryTime} min', style: const TextStyle(color: Colors.grey, fontSize: 12))]),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   void _showCartSheet(BuildContext context) {
     showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        height: MediaQuery.of(context).size.height * 0.8,
-        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-        child: Column(
-          children: [
-            Padding(padding: const EdgeInsets.all(20), child: Text('Your Cart (${cart.length})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
-            Expanded(
-              child: ListView.builder(
-                itemCount: cart.length,
-                itemBuilder: (_, i) => ListTile(
-                  leading: ClipRRect(borderRadius: BorderRadius.circular(8), child: NetworkImageFixed(cart[i].item.image, width: 60, height: 60)),
-                  title: Text(cart[i].item.name),
-                  subtitle: Text('Rs ${cart[i].item.price} x ${cart[i].quantity}'),
-                  trailing: Text('Rs ${cart[i].item.price * cart[i].quantity}', style: const TextStyle(fontWeight: FontWeight.bold)),
+      builder: (_) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.8,
+            decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+            child: Column(
+              children: [
+                Padding(padding: const EdgeInsets.all(20), child: Text('Your Cart (${cart.length})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: cart.length,
+                    itemBuilder: (_, i) => ListTile(
+                      leading: ClipRRect(borderRadius: BorderRadius.circular(8), child: NetworkImageFixed(cart[i].item.image, width: 60, height: 60)),
+                      title: Text(cart[i].item.name),
+                      subtitle: Text('Rs ${cart[i].item.price} x ${cart[i].quantity}'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(icon: const Icon(Icons.remove_circle_outline), onPressed: () {
+                            removeFromCart(cart[i]);
+                            setSheetState((){}); setState((){}); // Update both
+                          }),
+                          Text('${cart[i].quantity}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          IconButton(icon: const Icon(Icons.add_circle, color: kColorOrange), onPressed: () {
+                            addToCart(cart[i].item, cart[i].restaurant);
+                            setSheetState((){}); setState((){}); // Update both
+                          }),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: GradientButton(
+                    text: 'Checkout - Rs ${getCartTotal().toInt()}',
+                    onPressed: () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => CheckoutScreen(total: getCartTotal(), name: userName, phone: userPhone, address: userAddress, onPlaceOrder: placeOrder)));
+                    },
+                  ),
+                )
+              ],
             ),
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => CheckoutScreen(total: getCartTotal(), name: userName, phone: userPhone, address: userAddress, onPlaceOrder: () => setState(() => cart.clear()))));
-                  },
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, padding: const EdgeInsets.all(15)),
-                  child: Text('Checkout - Rs ${getCartTotal().toInt()}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                ),
-              ),
-            )
-          ],
-        ),
+          );
+        }
       ),
     );
   }
@@ -490,7 +740,10 @@ class _MainScreenState extends State<MainScreen> {
 class RestaurantDetailScreen extends StatelessWidget {
   final Restaurant restaurant;
   final Function(MenuItem, Restaurant) onAddToCart;
-  const RestaurantDetailScreen({super.key, required this.restaurant, required this.onAddToCart});
+  final bool isFav;
+  final Function(int) onToggleFav;
+
+  const RestaurantDetailScreen({super.key, required this.restaurant, required this.onAddToCart, required this.isFav, required this.onToggleFav});
 
   @override
   Widget build(BuildContext context) {
@@ -501,16 +754,15 @@ class RestaurantDetailScreen extends StatelessWidget {
             expandedHeight: 220,
             pinned: true,
             iconTheme: const IconThemeData(color: Colors.white),
+            actions: [
+              IconButton(
+                onPressed: () => onToggleFav(restaurant.id),
+                icon: Icon(isFav ? Icons.favorite : Icons.favorite_border, color: isFav ? kColorPink : Colors.white),
+              )
+            ],
             flexibleSpace: FlexibleSpaceBar(
               centerTitle: false,
-              title: Text(
-                restaurant.name,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  shadows: [Shadow(color: Colors.black, blurRadius: 10, offset: Offset(1, 1))],
-                ),
-              ),
+              title: Text(restaurant.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, shadows: [Shadow(color: Colors.black, blurRadius: 10, offset: Offset(1, 1))])),
               background: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -534,10 +786,7 @@ class RestaurantDetailScreen extends StatelessWidget {
                     decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)),
                     child: Row(
                       children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: NetworkImageFixed(item.image, width: 70, height: 70),
-                        ),
+                        ClipRRect(borderRadius: BorderRadius.circular(8), child: NetworkImageFixed(item.image, width: 70, height: 70)),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
@@ -545,7 +794,7 @@ class RestaurantDetailScreen extends StatelessWidget {
                             children: [
                               Text(item.name, style: const TextStyle(fontWeight: FontWeight.bold)),
                               Text(item.desc, style: const TextStyle(color: Colors.grey, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
-                              Text("Rs ${item.price}", style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold)),
+                              Text("Rs ${item.price}", style: const TextStyle(color: kColorOrange, fontWeight: FontWeight.bold)),
                             ],
                           ),
                         ),
@@ -554,7 +803,7 @@ class RestaurantDetailScreen extends StatelessWidget {
                             onAddToCart(item, restaurant);
                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Added"), duration: Duration(milliseconds: 500)));
                           },
-                          icon: const Icon(Icons.add_circle, color: Colors.deepOrange, size: 28),
+                          icon: const Icon(Icons.add_circle, color: kColorOrange, size: 28),
                         )
                       ],
                     ),
@@ -580,10 +829,10 @@ class ProfileTab extends StatelessWidget {
       child: Column(
         children: [
           const SizedBox(height: 40),
-          const CircleAvatar(
-            radius: 50,
-            backgroundColor: Colors.deepOrange,
-            child: Icon(Icons.person, size: 50, color: Colors.white),
+          Container(
+            padding: const EdgeInsets.all(3),
+            decoration: const BoxDecoration(shape: BoxShape.circle, gradient: kPrimaryGradient),
+            child: const CircleAvatar(radius: 50, backgroundColor: Colors.white, child: Icon(Icons.person, size: 50, color: Colors.grey)),
           ),
           const SizedBox(height: 15),
           Text(name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
@@ -608,7 +857,7 @@ class ProfileTab extends StatelessWidget {
 
   Widget _buildTile(IconData icon, String title, String sub, {bool isRed = false}) {
     return ListTile(
-      leading: Icon(icon, color: isRed ? Colors.red : Colors.deepOrange),
+      leading: Icon(icon, color: isRed ? Colors.red : kColorOrange),
       title: Text(title, style: TextStyle(color: isRed ? Colors.red : Colors.black, fontWeight: FontWeight.bold)),
       subtitle: sub.isNotEmpty ? Text(sub) : null,
     );
@@ -636,7 +885,7 @@ class CheckoutScreen extends StatelessWidget {
             Card(
               margin: const EdgeInsets.symmetric(vertical: 10),
               child: ListTile(
-                leading: const Icon(Icons.location_on, color: Colors.deepOrange),
+                leading: const Icon(Icons.location_on, color: kColorOrange),
                 title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
                 subtitle: Text("$phone\n$address"),
                 isThreeLine: true,
@@ -644,20 +893,16 @@ class CheckoutScreen extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             const Text("Payment", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const ListTile(leading: Icon(Icons.money, color: Colors.green), title: Text("Cash on Delivery"), trailing: Icon(Icons.check_circle, color: Colors.deepOrange)),
+            const ListTile(leading: Icon(Icons.money, color: Colors.green), title: Text("Cash on Delivery"), trailing: Icon(Icons.check_circle, color: kColorOrange)),
             const Spacer(),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
-                  onPlaceOrder();
-                  Navigator.pop(context); // Back to Home
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Order Placed Successfully!"), backgroundColor: Colors.green));
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, padding: const EdgeInsets.all(15)),
-                child: Text("Confirm Order - Rs ${total.toInt()}", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              ),
-            )
+            GradientButton(
+              text: 'Confirm Order - Rs ${total.toInt()}',
+              onPressed: () {
+                onPlaceOrder();
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Order Placed Successfully!"), backgroundColor: Colors.green));
+              },
+            ),
           ],
         ),
       ),
